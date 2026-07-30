@@ -2,7 +2,7 @@
   "name": "cser-workspace-v3-eset-candidate-edition",
   "version": "3.0.0",
   "private": true,
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@10.26.1",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -33,6 +33,20 @@
     "@types/node": "24.1.0",
     "prisma": "7.9.0",
     "tsx": "4.20.3",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "@prisma/client": "7.9.0",
+    "@prisma/adapter-pg": "latest",
+    "pg": "latest",
+    "@types/pg": "latest"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/engines",
+      "@scarf/scarf",
+      "esbuild",
+      "prisma",
+      "@prisma/client"
+    ]
   }
 }

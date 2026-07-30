@@ -1,330 +1,433 @@
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+generator client {
+  provider = "prisma-client-js"
+}
 
-enum Role { SECURITY_ANALYST CLOUD_OPERATIONS SECURITY_MANAGER READ_ONLY_AUDITOR PLATFORM_ADMIN }
-enum Provider { AZURE AWS GCP }
-enum Severity { CRITICAL HIGH MEDIUM LOW }
-enum FindingState { OPEN TRIAGED ASSIGNED IN_PROGRESS READY_FOR_REVIEW VERIFIED RESOLVED ACCEPTED_RISK DEFERRED FALSE_POSITIVE }
-enum IntegrationState { HEALTHY DEGRADED OFFLINE AUTH_ERROR RATE_LIMITED SYNCING STALE DISABLED }
-enum TaskState { TODO IN_PROGRESS BLOCKED REVIEW_REQUESTED DONE CANCELLED }
-enum EvidenceState { QUARANTINED CLEAN REJECTED_TYPE REJECTED_SIZE REJECTED_SCAN }
-enum OperationState { DRAFT VALIDATING READY QUEUED EXECUTING SUCCEEDED PARTIALLY_SUCCEEDED FAILED CANCELLED }
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  SECURITY_ANALYST
+  CLOUD_OPERATIONS
+  SECURITY_MANAGER
+  READ_ONLY_AUDITOR
+  PLATFORM_ADMIN
+}
+
+enum Provider {
+  AZURE
+  AWS
+  GCP
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum FindingState {
+  OPEN
+  TRIAGED
+  ASSIGNED
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  VERIFIED
+  RESOLVED
+  ACCEPTED_RISK
+  DEFERRED
+  FALSE_POSITIVE
+}
+
+enum IntegrationState {
+  HEALTHY
+  DEGRADED
+  OFFLINE
+  AUTH_ERROR
+  RATE_LIMITED
+  SYNCING
+  STALE
+  DISABLED
+}
+
+enum TaskState {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  REVIEW_REQUESTED
+  DONE
+  CANCELLED
+}
+
+enum EvidenceState {
+  QUARANTINED
+  CLEAN
+  REJECTED_TYPE
+  REJECTED_SIZE
+  REJECTED_SCAN
+}
+
+enum OperationState {
+  DRAFT
+  VALIDATING
+  READY
+  QUEUED
+  EXECUTING
+  SUCCEEDED
+  PARTIALLY_SUCCEEDED
+  FAILED
+  CANCELLED
+}
 
 model Tenant {
- id String @id @default(uuid())
- key String @unique
- name String
- status String @default("ACTIVE")
- settings Json @default("{}")
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- memberships Membership[]
- connections CloudConnection[]
- workloads Workload[]
- findings Finding[]
- auditEvents AuditEvent[]
- savedViews SavedView[]
- impactScenarios ImpactScenario[]
- notifications Notification[]
+  id              String          @id @default(uuid())
+  key             String          @unique
+  name            String
+  status          String          @default("ACTIVE")
+  settings        Json            @default("{}")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  memberships     Membership[]
+  connections     CloudConnection[]
+  workloads       Workload[]
+  findings        Finding[]
+  auditEvents     AuditEvent[]
+  savedViews      SavedView[]
+  impactScenarios ImpactScenario[]
+  notifications   Notification[]
 }
+
 model User {
- id String @id
- externalSubject String @unique
- email String @unique
- displayName String
- status String @default("ACTIVE")
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- memberships Membership[]
- comments FindingComment[]
- evidence Evidence[]
- verifications Verification[]
+  id             String          @id
+  externalSubject String         @unique
+  email          String          @unique
+  displayName    String
+  status         String          @default("ACTIVE")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  memberships    Membership[]
+  comments       FindingComment[]
+  evidence       Evidence[]
+  verifications  Verification[]
 }
+
 model Membership {
- id String @id @default(uuid())
- tenantId String
- userId String
- role Role
- status String @default("ACTIVE")
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- user User @relation(fields:[userId],references:[id],onDelete:Restrict)
- @@unique([tenantId,userId])
- @@index([tenantId,role])
+  id       String @id @default(uuid())
+  tenantId String
+  userId   String
+  role     Role
+  status   String @default("ACTIVE")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, role])
 }
+
 model CloudConnection {
- id String @id
- tenantId String
- provider Provider
- alias String
- externalScopeId String
- state IntegrationState
- freshnessStatus String
- lastSyncAt DateTime?
- lastSuccessfulSyncAt DateTime?
- itemCount Int @default(0)
- errorCode String?
- circuitState String @default("CLOSED")
- version Int @default(1)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- workloads Workload[]
- enablementPlans EnablementPlan[]
- operations IntegrationOperation[]
- @@index([tenantId,state])
+  id                   String           @id
+  tenantId             String
+  provider             Provider
+  alias                String
+  externalScopeId      String
+  state                IntegrationState
+  freshnessStatus      String
+  lastSyncAt           DateTime?
+  lastSuccessfulSyncAt DateTime?
+  itemCount            Int              @default(0)
+  errorCode            String?
+  circuitState         String           @default("CLOSED")
+  version              Int              @default(1)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  tenant               Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workloads            Workload[]
+  enablementPlans      EnablementPlan[]
+  operations           IntegrationOperation[]
+
+  @@index([tenantId, state])
 }
+
 model Workload {
- id String @id
- tenantId String
- connectionId String
- provider Provider
- externalId String
- name String
- scopeAlias String
- environment String
- region String
- osFamily String
- osVersion String?
- eligibility String
- protectionStatus String
- assetCriticality String
- internetExposure Boolean @default(false)
- ownerTeam String?
- tags String[]
- providerPayloadHash String
- lastSeenAt DateTime
- version Int @default(1)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- connection CloudConnection @relation(fields:[connectionId],references:[id],onDelete:Restrict)
- findings Finding[]
- @@unique([tenantId,provider,externalId])
- @@index([tenantId,provider,environment,protectionStatus])
- @@index([tenantId,lastSeenAt])
+  id                  String          @id
+  tenantId            String
+  connectionId        String
+  provider            Provider
+  externalId          String
+  name                String
+  scopeAlias          String
+  environment         String
+  region              String
+  osFamily            String
+  osVersion           String?
+  eligibility         String
+  protectionStatus    String
+  assetCriticality    String
+  internetExposure    Boolean         @default(false)
+  ownerTeam           String?
+  tags                String[]
+  providerPayloadHash String
+  lastSeenAt          DateTime
+  version             Int             @default(1)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  connection          CloudConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  findings            Finding[]
+
+  @@unique([tenantId, provider, externalId])
+  @@index([tenantId, provider, environment, protectionStatus])
+  @@index([tenantId, lastSeenAt])
 }
+
 model Finding {
- id String @id
- tenantId String
- workloadId String
- ruleKey String
- title String
- description String
- severity Severity
- confidence String
- state FindingState
- riskScore Int
- riskExplanation Json
- assigneeUserId String?
- assigneeTeam String?
- dueAt DateTime?
- firstSeenAt DateTime
- lastSeenAt DateTime
- resolvedAt DateTime?
- version Int @default(1)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- workload Workload @relation(fields:[workloadId],references:[id],onDelete:Restrict)
- task RemediationTask?
- comments FindingComment[]
- evidence Evidence[]
- verifications Verification[]
- riskAcceptance RiskAcceptance?
- @@index([tenantId,state,severity])
- @@index([tenantId,assigneeUserId,dueAt])
- @@index([tenantId,riskScore])
+  id             String         @id
+  tenantId       String
+  workloadId     String
+  ruleKey        String
+  title          String
+  description    String
+  severity       Severity
+  confidence     String
+  state          FindingState
+  riskScore      Int
+  riskExplanation Json
+  assigneeUserId String?
+  assigneeTeam   String?
+  dueAt          DateTime?
+  firstSeenAt    DateTime
+  lastSeenAt     DateTime
+  resolvedAt     DateTime?
+  version        Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workload       Workload       @relation(fields: [workloadId], references: [id], onDelete: Restrict)
+  task           RemediationTask?
+  comments       FindingComment[]
+  evidence       Evidence[]
+  verifications  Verification[]
+  riskAcceptance RiskAcceptance?
+
+  @@index([tenantId, state, severity])
+  @@index([tenantId, assigneeUserId, dueAt])
+  @@index([tenantId, riskScore])
 }
+
 model RemediationTask {
- id String @id @default(uuid())
- tenantId String
- findingId String @unique
- ownerUserId String?
- ownerTeam String?
- state TaskState
- summary String
- checklist Json
- dueAt DateTime
- remediationAuthorId String?
- version Int @default(1)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- finding Finding @relation(fields:[findingId],references:[id],onDelete:Restrict)
- evidence Evidence[]
- @@index([tenantId,state,ownerUserId])
+  id                  String    @id @default(uuid())
+  tenantId            String
+  findingId           String    @unique
+  ownerUserId         String?
+  ownerTeam           String?
+  state               TaskState
+  summary             String
+  checklist           Json
+  dueAt               DateTime
+  remediationAuthorId String?
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  finding             Finding   @relation(fields: [findingId], references: [id], onDelete: Restrict)
+  evidence            Evidence[]
+
+  @@index([tenantId, state, ownerUserId])
 }
+
 model FindingComment {
- id String @id @default(uuid())
- tenantId String
- findingId String
- authorUserId String
- body String
- createdAt DateTime @default(now())
- finding Finding @relation(fields:[findingId],references:[id],onDelete:Restrict)
- author User @relation(fields:[authorUserId],references:[id],onDelete:Restrict)
- @@index([tenantId,findingId,createdAt])
+  id           String   @id @default(uuid())
+  tenantId     String
+  findingId    String
+  authorUserId String
+  body         String
+  createdAt    DateTime @default(now())
+  finding      Finding  @relation(fields: [findingId], references: [id], onDelete: Restrict)
+  author       User     @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, findingId, createdAt])
 }
+
 model Evidence {
- id String @id @default(uuid())
- tenantId String
- findingId String
- taskId String?
- authorUserId String
- type String
- status EvidenceState
- structuredNote String
- objectKey String?
- originalName String?
- mimeType String?
- size Int?
- sha256 String
- createdAt DateTime @default(now())
- finding Finding @relation(fields:[findingId],references:[id],onDelete:Restrict)
- task RemediationTask? @relation(fields:[taskId],references:[id],onDelete:Restrict)
- author User @relation(fields:[authorUserId],references:[id],onDelete:Restrict)
- @@index([tenantId,findingId,status])
+  id           String        @id @default(uuid())
+  tenantId     String
+  findingId    String
+  taskId       String?
+  authorUserId String
+  type         String
+  status       EvidenceState
+  structuredNote String
+  objectKey    String?
+  originalName String?
+  mimeType     String?
+  size         Int?
+  sha256       String
+  createdAt    DateTime      @default(now())
+  finding      Finding       @relation(fields: [findingId], references: [id], onDelete: Restrict)
+  task         RemediationTask? @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  author       User          @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, findingId, status])
 }
+
 model Verification {
- id String @id @default(uuid())
- tenantId String
- findingId String
- verifierUserId String
- method String
- result String
- notes String
- verifiedAt DateTime @default(now())
- finding Finding @relation(fields:[findingId],references:[id],onDelete:Restrict)
- verifier User @relation(fields:[verifierUserId],references:[id],onDelete:Restrict)
- @@index([tenantId,findingId,result])
+  id             String   @id @default(uuid())
+  tenantId       String
+  findingId      String
+  verifierUserId String
+  method         String
+  result         String
+  notes          String
+  verifiedAt     DateTime @default(now())
+  finding        Finding  @relation(fields: [findingId], references: [id], onDelete: Restrict)
+  verifier       User     @relation(fields: [verifierUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, findingId, result])
 }
+
 model RiskAcceptance {
- id String @id @default(uuid())
- tenantId String
- findingId String @unique
- approvedByUserId String
- reason String
- businessOwner String
- compensatingControl String
- expiresAt DateTime
- createdAt DateTime @default(now())
- finding Finding @relation(fields:[findingId],references:[id],onDelete:Restrict)
- @@index([tenantId,expiresAt])
+  id                  String   @id @default(uuid())
+  tenantId            String
+  findingId           String   @unique
+  approvedByUserId    String
+  reason              String
+  businessOwner       String
+  compensatingControl String
+  expiresAt           DateTime
+  createdAt           DateTime @default(now())
+  finding             Finding  @relation(fields: [findingId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, expiresAt])
 }
+
 model EnablementPlan {
- id String @id @default(uuid())
- tenantId String
- connectionId String
- createdByUserId String
- provider Provider
- state OperationState
- targetCount Int
- excludedCount Int
- autoEnableNew Boolean
- autoEnableExisting Boolean
- scope Json
- targets Json
- exclusions Json
- preview Json?
- progress Int @default(0)
- errorCode String?
- version Int @default(1)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- connection CloudConnection @relation(fields:[connectionId],references:[id],onDelete:Restrict)
- operations IntegrationOperation[]
- @@index([tenantId,state])
+  id                String         @id @default(uuid())
+  tenantId          String
+  connectionId      String
+  createdByUserId   String
+  provider          Provider
+  state             OperationState
+  targetCount       Int
+  excludedCount     Int
+  autoEnableNew     Boolean
+  autoEnableExisting Boolean
+  scope             Json
+  targets           Json
+  exclusions        Json
+  preview           Json?
+  progress          Int            @default(0)
+  errorCode         String?
+  version           Int            @default(1)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  connection        CloudConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  operations        IntegrationOperation[]
+
+  @@index([tenantId, state])
 }
+
 model IntegrationOperation {
- id String @id @default(uuid())
- tenantId String
- connectionId String
- planId String?
- type String
- state OperationState
- progress Int
- result Json?
- errorCode String?
- idempotencyKey String
- correlationId String
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- connection CloudConnection @relation(fields:[connectionId],references:[id],onDelete:Restrict)
- plan EnablementPlan? @relation(fields:[planId],references:[id],onDelete:Restrict)
- @@unique([tenantId,idempotencyKey])
- @@index([tenantId,state,createdAt])
+  id             String         @id @default(uuid())
+  tenantId       String
+  connectionId   String
+  planId         String?
+  type           String
+  state          OperationState
+  progress       Int
+  result         Json?
+  errorCode      String?
+  idempotencyKey String
+  correlationId  String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  connection     CloudConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  plan           EnablementPlan? @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, state, createdAt])
 }
+
 model SavedView {
- id String @id @default(uuid())
- tenantId String
- userId String
- entityType String
- name String
- query Json
- isDefault Boolean @default(false)
- version Int @default(1)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- @@index([tenantId,userId,entityType])
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String
+  entityType String
+  name       String
+  query      Json
+  isDefault  Boolean  @default(false)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, userId, entityType])
 }
+
 model ImpactScenario {
- id String @id @default(uuid())
- tenantId String
- name String
- scenario String
- inputs Json
- result Json
- createdByUserId String
- version Int @default(1)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- @@index([tenantId,scenario])
+  id              String   @id @default(uuid())
+  tenantId        String
+  name            String
+  scenario        String
+  inputs          Json
+  result          Json
+  createdByUserId String
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, scenario])
 }
+
 model Notification {
- id String @id @default(uuid())
- tenantId String
- userId String
- title String
- body String
- readAt DateTime?
- createdAt DateTime @default(now())
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- @@index([tenantId,userId,readAt])
+  id        String    @id @default(uuid())
+  tenantId  String
+  userId    String
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, userId, readAt])
 }
+
 model AuditEvent {
- id String @id @default(uuid())
- tenantId String
- actorUserId String
- actorRole Role
- action String
- entityType String
- entityId String
- beforeHash String?
- afterHash String?
- safeDiff Json
- reason String?
- correlationId String
- requestId String
- idempotencyKey String?
- ipAddress String?
- userAgent String?
- createdAt DateTime @default(now())
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
- @@index([tenantId,createdAt])
- @@index([tenantId,entityType,entityId])
+  id             String   @id @default(uuid())
+  tenantId       String
+  actorUserId    String
+  actorRole      Role
+  action         String
+  entityType     String
+  entityId       String
+  beforeHash     String?
+  afterHash      String?
+  safeDiff       Json
+  reason         String?
+  correlationId  String
+  requestId      String
+  idempotencyKey String?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
 }
+
 model IdempotencyRecord {
- id String @id @default(uuid())
- tenantId String
- route String
- method String
- key String
- requestHash String
- responseStatus Int
- responseBody Json
- expiresAt DateTime
- createdAt DateTime @default(now())
- @@unique([tenantId,route,key])
- @@index([expiresAt])
+  id             String   @id @default(uuid())
+  tenantId       String
+  route          String
+  method         String
+  key            String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@unique([tenantId, route, key])
+  @@index([expiresAt])
 }
