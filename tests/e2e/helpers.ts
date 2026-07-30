@@ -1,0 +1,1 @@
+import{expect,type Page}from'@playwright/test';export async function loginAs(page:Page,name:string){await page.goto('/login');await page.getByRole('button',{name:new RegExp(name,'i')}).click();await expect(page).toHaveURL(/\/app\/overview/)}

@@ -1,0 +1,1 @@
+import{Module}from'@nestjs/common';import{AuthModule}from'../auth/auth.module';import{WorkloadsController}from'./workloads.controller';import{WorkloadsService}from'./workloads.service';@Module({imports:[AuthModule],controllers:[WorkloadsController],providers:[WorkloadsService]})export class WorkloadsModule{}

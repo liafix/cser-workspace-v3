@@ -1,0 +1,1 @@
+import{Module}from'@nestjs/common';import{AuthModule}from'../auth/auth.module';import{EnablementController}from'./enablement.controller';import{EnablementService}from'./enablement.service';@Module({imports:[AuthModule],controllers:[EnablementController],providers:[EnablementService]})export class EnablementModule{}

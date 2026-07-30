@@ -1,0 +1,2 @@
+import{render,screen}from'@testing-library/react';import{describe,expect,it,vi}from'vitest';import{Metric}from'./ui';
+describe('Metric',()=>{it('uses a semantic button and invokes navigation',()=>{const fn=vi.fn();render(<Metric label="Critical findings" value={7} detail="2 overdue" onClick={fn}/>);screen.getByRole('button',{name:/critical findings/i}).click();expect(fn).toHaveBeenCalledOnce()})});

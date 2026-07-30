@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#030a18">
+  <title>CSER Workspace — Cloud exposure to verified action</title>
+  <meta name="description" content="Independent cloud security exposure and remediation workspace candidate concept.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="landing-body">
+  <header class="landing-nav">
+    <a class="brand" href="/" aria-label="CSER Workspace home">
+      <span class="brand-mark"><span></span></span>
+      <span><strong>CSER</strong> Workspace</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#product">Product</a><a href="#security">Security</a><a href="#architecture">Architecture</a><a href="/app">Demo</a>
+    </nav>
+    <a class="button button-primary" href="/app">Explore the workspace <span aria-hidden="true">→</span></a>
+  </header>
+  <main>
+    <section class="hero" id="product">
+      <div class="hero-copy">
+        <h1>Turn cloud exposure into <span>verified</span> action.</h1>
+        <p>A unified workspace for cloud workload visibility, risk prioritization, remediation, verification, and adoption insight — built for modern security teams.</p>
+        <div class="hero-actions">
+          <a class="button button-primary button-large" href="/app">Explore the workspace <span aria-hidden="true">→</span></a>
+          <a class="button button-secondary button-large" href="#architecture"><span aria-hidden="true">◉</span> View architecture</a>
+        </div>
+        <p class="disclaimer-line">ⓘ Independent candidate concept · Fictional data · Not an official ESET product</p>
+        <div class="hero-cloud" aria-hidden="true">
+          <div class="cloud-outline"></div><div class="cloud-beam"></div><div class="grid-floor"></div>
+        </div>
+      </div>
+      <div class="product-frame" aria-label="CSER Workspace product preview">
+        <div class="preview-sidebar">
+          <div class="preview-brand">CSER Workspace</div>
+          <div class="preview-nav active">⌂ Overview</div><div class="preview-nav">◎ Findings</div><div class="preview-nav">▣ Workloads</div><div class="preview-nav">◇ Remediation</div><div class="preview-nav">✓ Verification</div><div class="preview-nav">⌁ Integrations</div><div class="preview-nav">▥ Reports</div>
+          <div class="preview-user">SR <span>Security Team<br><small>Admin</small></span></div>
+        </div>
+        <div class="preview-main">
+          <div class="preview-heading"><div><strong>Overview</strong><small>Real-time posture and remediation overview across your cloud environment.</small></div><span>Last 7 days · Filters</span></div>
+          <div class="preview-metrics">
+            <article><small>Protected workloads</small><b>2,843</b><em>↗ 18%</em><i class="spark green"></i></article>
+            <article><small>Unprotected workloads</small><b>312</b><em class="down">↘ 9%</em><i class="spark red"></i></article>
+            <article><small>Critical findings</small><b>128</b><em class="down">↘ 14%</em><i class="spark purple"></i></article>
+            <article><small>MTTR</small><b>4.7h</b><em>↗ 21%</em><i class="spark cyan"></i></article>
+            <article><small>Integration health</small><b>98%</b><em>↗ 6%</em><i class="bars"></i></article>
+          </div>
+          <div class="preview-grid">
+            <section class="preview-table">
+              <strong>Top findings</strong>
+              <div class="table-row header"><span>Finding</span><span>Severity</span><span>Assets</span><span>Status</span></div>
+              <div class="table-row"><span>Public S3 bucket</span><span class="sev crit">Critical</span><span>156</span><span>Open</span></div>
+              <div class="table-row"><span>Security group open to internet</span><span class="sev high">High</span><span>342</span><span>Open</span></div>
+              <div class="table-row"><span>Over-permissive IAM role</span><span class="sev high">High</span><span>198</span><span>Open</span></div>
+              <div class="table-row"><span>Unencrypted storage</span><span class="sev med">Medium</span><span>267</span><span>Open</span></div>
+            </section>
+            <section class="preview-remediation"><strong>Enable remediation</strong><small>Step 2 of 4</small><p>Select a remediation strategy</p><label class="strategy selected">◈ Automated (recommended)</label><label class="strategy">♙ Assisted</label><label class="strategy">▱ Manual</label><button>Next</button></section>
+          </div>
+          <div class="preview-bottom"><article><strong>Cloud distribution</strong><div class="donut">3,155<small>workloads</small></div></article><article><strong>Risk trend</strong><div class="trend-lines"></div></article><article><strong>Remediation impact</strong><b>412</b><small>Findings resolved · Risk reduction 28%</small></article></div>
+        </div>
+      </div>
+    </section>
+    <section class="value-strip">
+      <article><span>⌁</span><div><strong>Multi-cloud visibility</strong><p>One normalized view across Azure, AWS, and GCP.</p></div></article>
+      <article><span>◇</span><div><strong>Verified remediation</strong><p>Evidence-backed workflow with independent verification.</p></div></article>
+      <article><span>↗</span><div><strong>Transparent ROI</strong><p>Measure coverage, MTTR, adoption, and modelled impact.</p></div></article>
+      <article><span>☁</span><div><strong>Provider health</strong><p>Freshness, degraded modes, and safe retries.</p></div></article>
+    </section>
+    <section class="landing-section" id="security"><div><small>DISCOVER → PRIORITIZE → REMEDIATE → VERIFY</small><h2>A workspace, not another static dashboard.</h2></div><p>Every finding is connected to the affected workload, a responsible owner, an SLA, remediation evidence, independent verification, and an immutable audit trail.</p></section>
+    <section class="architecture-section" id="architecture"><div class="architecture-copy"><small>REFERENCE ARCHITECTURE</small><h2>Built around explicit boundaries.</h2><p>The candidate MVP uses a React interface, a secure REST boundary, persistent workflow state, tenant-scoped authorization, deterministic provider adapters, and transparent analytics assumptions.</p><a class="button button-secondary" href="/app">Open interactive demo</a></div><div class="architecture-diagram"><div>React workspace</div><span>→</span><div>Secure REST API</div><span>→</span><div>Persistent workflow</div><div>Azure mock</div><div>AWS mock</div><div>GCP mock</div></div></section>
+  </main>
+  <footer class="landing-footer"><span>CSER Workspace · Independent candidate concept</span><span>Fictional data · No internal ESET systems or APIs</span></footer>
+</body>
+</html>

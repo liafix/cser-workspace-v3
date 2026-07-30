@@ -1,0 +1,35 @@
+name: verify-v3
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: {POSTGRES_DB: cser, POSTGRES_USER: cser, POSTGRES_PASSWORD: cser}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cser -d cser" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://cser:cser@localhost:5432/cser?schema=public
+      SESSION_SECRET: ci-secret-with-more-than-thirty-two-characters
+      DEMO_MODE: 'true'
+      ALLOWED_ORIGINS: http://127.0.0.1:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: {version: 10.14.0}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: pnpm}
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm prisma migrate deploy
+      - run: pnpm db:seed
+      - run: pnpm db:verify
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: docker compose build

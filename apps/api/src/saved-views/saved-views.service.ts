@@ -1,0 +1,2 @@
+import{Injectable}from'@nestjs/common';import{PrismaService}from'../prisma/prisma.service';import type{AuthContext}from'../common/request-context';
+@Injectable()export class SavedViewsService{constructor(private readonly prisma:PrismaService){}list(a:AuthContext){return this.prisma.savedView.findMany({where:{tenantId:a.tenantId,userId:a.userId},orderBy:{createdAt:'asc'}})}create(a:AuthContext,b:{entityType:string;name:string;query:Record<string,string|string[]>;isDefault:boolean}){return this.prisma.savedView.create({data:{tenantId:a.tenantId,userId:a.userId,...b}})}}

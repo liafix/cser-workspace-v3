@@ -1,0 +1,135 @@
+
+> cser-workspace-candidate-mvp-v2@2.0.0 verify
+> npm run build && npm run reset && npm run verify:seed && npm test && npm run smoke
+
+
+> cser-workspace-candidate-mvp-v2@2.0.0 build
+> node vendor/typescript/bin/tsc -p tsconfig.json --pretty false && node scripts/postbuild.js
+
+Frontend build ready: 105 KiB
+
+> cser-workspace-candidate-mvp-v2@2.0.0 reset
+> node scripts/seed.js --reset
+
+Seeding CSER Workspace V2 database...
+Seed complete: 10,000 workloads, 2500 findings at /mnt/data/CSER_Workspace_Candidate_MVP_V2/data/cser.db
+(node:6518) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> cser-workspace-candidate-mvp-v2@2.0.0 verify:seed
+> node scripts/verify-invariants.js
+
+PASS  verified/resolved findings without passed verification: 0
+PASS  assigned workflow findings without a remediation task: 0
+PASS  review-ready findings without clean evidence: 0
+PASS  accepted-risk findings without structured acceptance: 0
+PASS  cross-tenant workload/finding relationships: 0
+PASS  cross-tenant task/finding relationships: 0
+PASS  workload provider/connection mismatches: 0
+PASS  assigned findings without owner or SLA: 0
+Database: /mnt/data/CSER_Workspace_Candidate_MVP_V2/data/cser.db
+Totals: {"tenants":2,"workloads":10000,"findings":2500,"tasks":1522,"evidence":691,"verifications":489,"audits":520}
+PASS  audit update is blocked by database trigger.
+Seed and database invariants passed.
+(node:6537) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> cser-workspace-candidate-mvp-v2@2.0.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# (node:6562) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: CSER Workspace Candidate MVP V2 release verification
+    # Subtest: unsafe production startup is rejected
+    ok 1 - unsafe production startup is rejected
+      ---
+      duration_ms: 23.29788
+      type: 'test'
+      ...
+    # Subtest: health, readiness, OpenAPI and deterministic baseline are available
+    ok 2 - health, readiness, OpenAPI and deterministic baseline are available
+      ---
+      duration_ms: 29.139265
+      type: 'test'
+      ...
+    # Subtest: tenant isolation protects lists and guessed object IDs
+    ok 3 - tenant isolation protects lists and guessed object IDs
+      ---
+      duration_ms: 20.187669
+      type: 'test'
+      ...
+    # Subtest: Cloud Operations receives only assigned objects and cannot assign
+    ok 4 - Cloud Operations receives only assigned objects and cannot assign
+      ---
+      duration_ms: 17.861385
+      type: 'test'
+      ...
+    # Subtest: malformed JSON returns 400 instead of an internal error
+    ok 5 - malformed JSON returns 400 instead of an internal error
+      ---
+      duration_ms: 6.93181
+      type: 'test'
+      ...
+    # Subtest: version preconditions are mandatory and stale writes fail
+    ok 6 - version preconditions are mandatory and stale writes fail
+      ---
+      duration_ms: 8.968341
+      type: 'test'
+      ...
+    # Subtest: idempotency replays the same request and rejects a different payload
+    ok 7 - idempotency replays the same request and rejects a different payload
+      ---
+      duration_ms: 10.640137
+      type: 'test'
+      ...
+    # Subtest: manager risk acceptance requires structured fields and persists them
+    ok 8 - manager risk acceptance requires structured fields and persists them
+      ---
+      duration_ms: 15.433459
+      type: 'test'
+      ...
+    # Subtest: critical finding golden path persists, guards and audits every step
+    ok 9 - critical finding golden path persists, guards and audits every step
+      ---
+      duration_ms: 34.968873
+      type: 'test'
+      ...
+    # Subtest: enablement plan execution is versioned and persisted
+    ok 10 - enablement plan execution is versioned and persisted
+      ---
+      duration_ms: 9.9874
+      type: 'test'
+      ...
+    # Subtest: ROI baseline and audited assumption persistence are correct
+    ok 11 - ROI baseline and audited assumption persistence are correct
+      ---
+      duration_ms: 8.617411
+      type: 'test'
+      ...
+    # Subtest: audit rows are protected from update and delete by database triggers
+    ok 12 - audit rows are protected from update and delete by database triggers
+      ---
+      duration_ms: 0.765223
+      type: 'test'
+      ...
+    1..12
+ok 1 - CSER Workspace Candidate MVP V2 release verification
+  ---
+  duration_ms: 12959.527068
+  type: 'test'
+  ...
+1..1
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13000.350436
+
+> cser-workspace-candidate-mvp-v2@2.0.0 smoke
+> node scripts/smoke.js
+
+Smoke test passed: landing, app, authentication, overview, and findings API.

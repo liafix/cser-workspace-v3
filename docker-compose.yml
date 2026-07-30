@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: cser
+      POSTGRES_USER: cser
+      POSTGRES_PASSWORD: cser_local_only
+    volumes: [cser_pg:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U cser -d cser"], interval: 5s, timeout: 3s, retries: 20}
+  api:
+    build: {context: ., dockerfile: apps/api/Dockerfile}
+    environment:
+      DATABASE_URL: postgresql://cser:cser_local_only@postgres:5432/cser?schema=public
+      NODE_ENV: development
+      DEMO_MODE: "true"
+      SESSION_SECRET: local-development-secret-change-before-production-1234
+      ALLOWED_ORIGINS: http://localhost:8080
+      PORT: "4000"
+    depends_on: {postgres: {condition: service_healthy}}
+    ports: ["4000:4000"]
+    healthcheck: {test: ["CMD", "wget", "-qO-", "http://localhost:4000/health/ready"], interval: 10s, timeout: 4s, retries: 12}
+  web:
+    build: {context: ., dockerfile: apps/web/Dockerfile, args: {VITE_API_BASE_URL: http://localhost:4000/api/v1}}
+    ports: ["8080:80"]
+    depends_on: {api: {condition: service_healthy}}
+volumes: {cser_pg: {}}

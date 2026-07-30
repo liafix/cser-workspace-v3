@@ -1,0 +1,45 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CSER Workspace Candidate MVP API",
+    "version": "2.0.0",
+    "description": "Independent candidate concept using fictional cloud-security data. Not an official ESET API or product."
+  },
+  "servers": [{"url": "/"}],
+  "tags": [
+    {"name":"Health"},{"name":"Identity"},{"name":"Workloads"},{"name":"Findings"},{"name":"Integrations"},{"name":"Enablement"},{"name":"Analytics"},{"name":"Audit"}
+  ],
+  "paths": {
+    "/api/health/live": {"get":{"tags":["Health"],"responses":{"200":{"description":"Process is live"}}}},
+    "/api/health/ready": {"get":{"tags":["Health"],"responses":{"200":{"description":"Database is ready"},"503":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/me": {"get":{"tags":["Identity"],"responses":{"200":{"description":"Current session"},"401":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/demo/switch-identity": {"post":{"tags":["Identity"],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["userId","tenantId"],"properties":{"userId":{"type":"string"},"tenantId":{"type":"string"}}}}}},"responses":{"200":{"description":"Demo session created"},"404":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/overview": {"get":{"tags":["Workloads"],"responses":{"200":{"description":"Tenant-scoped overview"}}}},
+    "/api/workloads": {"get":{"tags":["Workloads"],"parameters":[{"name":"page","in":"query","schema":{"type":"integer","minimum":1}},{"name":"limit","in":"query","schema":{"type":"integer","minimum":10,"maximum":100}},{"name":"provider","in":"query","schema":{"enum":["AZURE","AWS","GCP"]}},{"name":"protectionStatus","in":"query","schema":{"type":"string"}}],"responses":{"200":{"description":"Paginated workloads"}}}},
+    "/api/workloads/{id}": {"get":{"tags":["Workloads"],"parameters":[{"$ref":"#/components/parameters/Id"}],"responses":{"200":{"description":"Workload detail"},"404":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/findings": {"get":{"tags":["Findings"],"parameters":[{"name":"page","in":"query","schema":{"type":"integer","minimum":1}},{"name":"limit","in":"query","schema":{"type":"integer","minimum":10,"maximum":100}},{"name":"severity","in":"query","schema":{"enum":["CRITICAL","HIGH","MEDIUM","LOW"]}},{"name":"status","in":"query","schema":{"type":"string"}}],"responses":{"200":{"description":"Permission-aware finding list"}}}},
+    "/api/findings/{id}": {"get":{"tags":["Findings"],"parameters":[{"$ref":"#/components/parameters/Id"}],"responses":{"200":{"description":"Finding detail","headers":{"ETag":{"schema":{"type":"string"}}}},"404":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/findings/{id}/assign": {"post":{"tags":["Findings"],"parameters":[{"$ref":"#/components/parameters/Id"},{"$ref":"#/components/parameters/IfMatch"},{"$ref":"#/components/parameters/IdempotencyKey"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["assigneeUserId","dueAt","summary"],"properties":{"assigneeUserId":{"type":"string"},"dueAt":{"type":"string","format":"date-time"},"summary":{"type":"string","minLength":10}}}}}},"responses":{"200":{"description":"Finding assigned with remediation task"},"403":{"$ref":"#/components/responses/Problem"},"412":{"$ref":"#/components/responses/Problem"},"428":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/findings/{id}/transition": {"post":{"tags":["Findings"],"parameters":[{"$ref":"#/components/parameters/Id"},{"$ref":"#/components/parameters/IfMatch"},{"$ref":"#/components/parameters/IdempotencyKey"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["targetStatus"],"properties":{"targetStatus":{"type":"string"},"reason":{"type":"string"}}}}}},"responses":{"200":{"description":"Guarded state command completed"},"422":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/findings/{id}/evidence": {"post":{"tags":["Findings"],"parameters":[{"$ref":"#/components/parameters/Id"},{"$ref":"#/components/parameters/IfMatch"},{"$ref":"#/components/parameters/IdempotencyKey"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["note"],"properties":{"taskId":{"type":"string"},"note":{"type":"string","minLength":20,"maxLength":5000}}}}}},"responses":{"200":{"description":"Structured demo evidence recorded"}}}},
+    "/api/findings/{id}/verify": {"post":{"tags":["Findings"],"parameters":[{"$ref":"#/components/parameters/Id"},{"$ref":"#/components/parameters/IfMatch"},{"$ref":"#/components/parameters/IdempotencyKey"}],"responses":{"200":{"description":"Independent verification recorded"},"403":{"$ref":"#/components/responses/Problem"}}}},
+    "/api/integrations": {"get":{"tags":["Integrations"],"responses":{"200":{"description":"Cloud connection health"}}}},
+    "/api/integrations/{id}/sync": {"post":{"tags":["Integrations"],"parameters":[{"$ref":"#/components/parameters/Id"},{"$ref":"#/components/parameters/IfMatch"},{"$ref":"#/components/parameters/IdempotencyKey"}],"responses":{"200":{"description":"Deterministic provider sync completed"}}}},
+    "/api/enablement-plans": {"get":{"tags":["Enablement"],"responses":{"200":{"description":"Enablement plans"}}},"post":{"tags":["Enablement"],"parameters":[{"$ref":"#/components/parameters/IdempotencyKey"}],"responses":{"201":{"description":"Plan created"}}}},
+    "/api/enablement-plans/{id}/execute": {"post":{"tags":["Enablement"],"parameters":[{"$ref":"#/components/parameters/Id"},{"$ref":"#/components/parameters/IfMatch"},{"$ref":"#/components/parameters/IdempotencyKey"}],"responses":{"202":{"description":"Persisted deterministic operation completed"}}}},
+    "/api/analytics/impact": {"get":{"tags":["Analytics"],"responses":{"200":{"description":"Illustrative scenario sets"}}}},
+    "/api/analytics/impact/scenarios/{id}": {"put":{"tags":["Analytics"],"parameters":[{"$ref":"#/components/parameters/Id"},{"$ref":"#/components/parameters/IfMatch"},{"$ref":"#/components/parameters/IdempotencyKey"}],"responses":{"200":{"description":"Scenario assumptions persisted and audited"}}}},
+    "/api/audit": {"get":{"tags":["Audit"],"responses":{"200":{"description":"Append-only tenant audit records"}}}}
+  },
+  "components": {
+    "parameters": {
+      "Id": {"name":"id","in":"path","required":true,"schema":{"type":"string"}},
+      "IfMatch": {"name":"If-Match","in":"header","required":true,"description":"Latest weak ETag version","schema":{"type":"string","example":"W/\"1\""}},
+      "IdempotencyKey": {"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","minLength":8}}
+    },
+    "schemas": {
+      "Problem": {"type":"object","required":["title","status","code","detail","correlationId"],"properties":{"type":{"type":"string"},"title":{"type":"string"},"status":{"type":"integer"},"code":{"type":"string"},"detail":{"type":"string"},"correlationId":{"type":"string"},"fieldErrors":{"type":"array","items":{"type":"object"}}}}
+    },
+    "responses": {"Problem":{"description":"Structured problem response","content":{"application/problem+json":{"schema":{"$ref":"#/components/schemas/Problem"}}}}}
+  }
+}

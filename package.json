@@ -1,0 +1,38 @@
+{
+  "name": "cser-workspace-v3-eset-candidate-edition",
+  "version": "3.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm build:packages && pnpm --parallel --filter @cser/web --filter @cser/api dev",
+    "build": "pnpm build:packages && pnpm --filter @cser/api build && pnpm --filter @cser/web build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm build:packages && pnpm --filter @cser/api typecheck && pnpm --filter @cser/web typecheck",
+    "test": "pnpm --filter @cser/domain test && pnpm --filter @cser/web test && pnpm --filter @cser/api test",
+    "test:integration": "pnpm --filter @cser/api test:integration",
+    "test:e2e": "playwright test",
+    "test:a11y": "playwright test tests/accessibility",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force",
+    "db:verify": "tsx prisma/verify-invariants.ts",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm db:verify && pnpm build",
+    "preview:v2": "node legacy/v2-reference/server/index.js",
+    "db:migrate:dev": "prisma migrate dev",
+    "test:unit": "pnpm --filter @cser/domain test && pnpm --filter @cser/web test",
+    "verify:source": "node scripts/static-verify.mjs",
+    "build:packages": "pnpm --filter @cser/contracts build && pnpm --filter @cser/domain build"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.55.0",
+    "@types/node": "24.1.0",
+    "prisma": "7.9.0",
+    "tsx": "4.20.3",
+    "typescript": "5.9.2"
+  }
+}
