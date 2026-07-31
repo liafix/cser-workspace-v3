@@ -25,13 +25,27 @@ test('golden remediation flow preserves server-enforced commands', async ({ brow
   await expect(aMeta.getByText('Open', { exact: true })).toBeVisible();
 
   // 2. Transition: OPEN -> TRIAGED
+  const triageResponsePromise = a.waitForResponse(response =>
+    response.url().includes(`/findings/${findingId}/triage`) && response.request().method() === 'POST'
+  );
   await a.getByRole('button', { name: 'Triage' }).click();
   await a.getByRole('button', { name: 'Confirm command' }).click();
+  const triageRes = await triageResponsePromise;
+  if (!triageRes.ok()) {
+    throw new Error(`triage command failed: ${triageRes.status()} - ${await triageRes.text()}`);
+  }
   await expect(aMeta.getByText('Triaged', { exact: true })).toBeVisible();
 
   // 3. Transition: TRIAGED -> ASSIGNED
+  const assignResponsePromise = a.waitForResponse(response =>
+    response.url().includes(`/findings/${findingId}/assign`) && response.request().method() === 'POST'
+  );
   await a.getByRole('button', { name: 'Assign' }).click();
   await a.getByRole('button', { name: 'Confirm command' }).click();
+  const assignRes = await assignResponsePromise;
+  if (!assignRes.ok()) {
+    throw new Error(`assign command failed: ${assignRes.status()} - ${await assignRes.text()}`);
+  }
   await expect(aMeta.getByText('Assigned', { exact: true })).toBeVisible();
 
   // 4. Direct API assertion confirming assignment preconditions
@@ -54,13 +68,27 @@ test('golden remediation flow preserves server-enforced commands', async ({ brow
   await expect(o.locator('.definition', { hasText: 'Owner' }).getByText('Lukas Novak')).toBeVisible();
 
   // 6. Transition: ASSIGNED -> IN_PROGRESS
+  const startResponsePromise = o.waitForResponse(response =>
+    response.url().includes(`/findings/${findingId}/start`) && response.request().method() === 'POST'
+  );
   await o.getByRole('button', { name: /Start-remediation/i }).click();
   await o.getByRole('button', { name: 'Confirm command' }).click();
+  const startRes = await startResponsePromise;
+  if (!startRes.ok()) {
+    throw new Error(`start command failed: ${startRes.status()} - ${await startRes.text()}`);
+  }
   await expect(oMeta.getByText('In progress', { exact: true })).toBeVisible();
 
   // 7. Transition: IN_PROGRESS -> READY_FOR_REVIEW
+  const reviewResponsePromise = o.waitForResponse(response =>
+    response.url().includes(`/findings/${findingId}/request-review`) && response.request().method() === 'POST'
+  );
   await o.getByRole('button', { name: /Request-review/i }).click();
   await o.getByRole('button', { name: 'Confirm command' }).click();
+  const reviewRes = await reviewResponsePromise;
+  if (!reviewRes.ok()) {
+    throw new Error(`review command failed: ${reviewRes.status()} - ${await reviewRes.text()}`);
+  }
   await expect(oMeta.getByText('Ready for review', { exact: true })).toBeVisible();
 
   // 8. Verification: Analyst reloads and sees Ready for review
@@ -68,13 +96,27 @@ test('golden remediation flow preserves server-enforced commands', async ({ brow
   await expect(aMeta.getByText('Ready for review', { exact: true })).toBeVisible();
 
   // 9. Transition: READY_FOR_REVIEW -> VERIFIED (via Verify command)
+  const verifyResponsePromise = a.waitForResponse(response =>
+    response.url().includes(`/findings/${findingId}/verify`) && response.request().method() === 'POST'
+  );
   await a.getByRole('button', { name: 'Verify' }).click();
   await a.getByRole('button', { name: 'Confirm command' }).click();
+  const verifyRes = await verifyResponsePromise;
+  if (!verifyRes.ok()) {
+    throw new Error(`verify command failed: ${verifyRes.status()} - ${await verifyRes.text()}`);
+  }
   await expect(aMeta.getByText('Verified', { exact: true })).toBeVisible();
 
   // 10. Transition: VERIFIED -> RESOLVED (via Resolve command)
+  const resolveResponsePromise = a.waitForResponse(response =>
+    response.url().includes(`/findings/${findingId}/resolve`) && response.request().method() === 'POST'
+  );
   await a.getByRole('button', { name: 'Resolve' }).click();
   await a.getByRole('button', { name: 'Confirm command' }).click();
+  const resolveRes = await resolveResponsePromise;
+  if (!resolveRes.ok()) {
+    throw new Error(`resolve command failed: ${resolveRes.status()} - ${await resolveRes.text()}`);
+  }
   await expect(aMeta.getByText('Resolved', { exact: true })).toBeVisible();
 
   await analyst.close();
