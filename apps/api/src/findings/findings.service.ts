@@ -68,19 +68,68 @@ export class FindingsService {
 
     return this.prisma.$transaction(async tx => {
       if (command === 'request-review') {
-        // 1. Run the operations to insert the Clean Evidence and complete the Checklist
-        await operation(tx, f, nextState);
-        // 2. Load the updated record inside the transaction
-        const updatedFinding = await tx.finding.findFirstOrThrow({
+        const task = f.task!;
+        const rBody = body as ReviewDto;
+
+        // 1. Confirm finding is currently in IN_PROGRESS
+        if (f.state !== 'IN_PROGRESS') {
+          throw new DomainError('INVALID_STATE', 'Finding must be in IN_PROGRESS state to request review.');
+        }
+
+        // 2. Create the real CLEAN evidence
+        await tx.evidence.create({
+          data: {
+            tenantId: auth.tenantId,
+            findingId: f.id,
+            taskId: task.id,
+            authorUserId: auth.userId,
+            type: 'STRUCTURED_NOTE',
+            status: rBody.structuredEvidence.includes('quarantine') ? 'QUARANTINED' : 'CLEAN',
+            structuredNote: rBody.structuredEvidence,
+            sha256: hashJson(rBody.structuredEvidence)
+          }
+        });
+
+        // 3. Complete the real persisted remediation checklist
+        await tx.remediationTask.update({
+          where: { findingId: f.id },
+          data: {
+            checklist: [
+              { label: 'Apply approved configuration change', done: rBody.checklistComplete },
+              { label: 'Capture safe evidence', done: rBody.checklistComplete },
+              { label: 'Request independent review', done: rBody.checklistComplete }
+            ]
+          }
+        });
+
+        // 4. Reload the finding/task/evidence inside the same transaction
+        const reloaded = await tx.finding.findFirstOrThrow({
           where: { id, tenantId: auth.tenantId },
           include: { workload: true, task: true, comments: { include: { author: true } }, evidence: { include: { author: true } }, verifications: { include: { verifier: true } }, riskAcceptance: true }
         });
-        // 3. Assert transition on the REAL, updated database state!
-        assertTransition(command, this.context(auth, updatedFinding));
+
+        // 5. Confirm reloaded is still IN_PROGRESS before transition validation
+        if (reloaded.state !== 'IN_PROGRESS') {
+          throw new DomainError('INVALID_STATE', 'Finding must be in IN_PROGRESS state to request review.');
+        }
+
+        // 6. Run transition validation against the freshly reloaded record
+        assertTransition(command, this.context(auth, reloaded));
+
+        // 7. Only after validation passes, update states and versions
+        await tx.finding.update({
+          where: { id: f.id },
+          data: { state: nextState, version: { increment: 1 } }
+        });
+
+        await tx.remediationTask.update({
+          where: { findingId: f.id },
+          data: { state: 'REVIEW_REQUESTED', summary: rBody.remediationSummary, version: { increment: 1 } }
+        });
+
       } else {
-        // Assert before the operation
-        assertTransition(command, this.context(auth, f));
-        await operation(tx, f, nextState);
+        const next = assertTransition(command, this.context(auth, f));
+        await operation(tx, f, next);
       }
 
       const updated = await tx.finding.findFirstOrThrow({ where: { id, tenantId: auth.tenantId }, include: { workload: true, task: true, comments: { include: { author: true } }, evidence: { include: { author: true } }, verifications: { include: { verifier: true } }, riskAcceptance: true } });
@@ -94,7 +143,7 @@ export class FindingsService {
   triage(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:triage'); return this.execute(a, id, 'triage', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }) }) }
   assign(a: AuthContext, id: string, b: AssignFindingDto, m: CommandMeta) { requirePermission(a, 'finding:assign'); return this.execute(a, id, 'assign', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, assigneeUserId: b.assigneeUserId, assigneeTeam: b.assigneeTeam, dueAt: new Date(b.dueAt), version: { increment: 1 } } }); await tx.remediationTask.create({ data: { tenantId: a.tenantId, findingId: f.id, ownerUserId: b.assigneeUserId, ownerTeam: b.assigneeTeam, state: 'TODO', summary: b.summary, checklist: [{ label: 'Apply approved configuration change', done: false }, { label: 'Capture safe evidence', done: false }, { label: 'Request independent review', done: false }], dueAt: new Date(b.dueAt) } }) }) }
   start(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:work'); return this.execute(a, id, 'start', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }); await tx.remediationTask.update({ where: { findingId: f.id }, data: { state: 'IN_PROGRESS', remediationAuthorId: a.userId, version: { increment: 1 } } }) }) }
-  review(a: AuthContext, id: string, b: ReviewDto, m: CommandMeta) { requirePermission(a, 'finding:work'); return this.execute(a, id, 'request-review', b, m, async (tx, f, next) => { const task = f.task!; await tx.evidence.create({ data: { tenantId: a.tenantId, findingId: f.id, taskId: task.id, authorUserId: a.userId, type: 'STRUCTURED_NOTE', status: 'CLEAN', structuredNote: b.structuredEvidence, sha256: hashJson(b.structuredEvidence) } }); await tx.remediationTask.update({ where: { findingId: f.id }, data: { state: 'REVIEW_REQUESTED', summary: b.remediationSummary, checklist: [{ label: 'Apply approved configuration change', done: true }, { label: 'Capture safe evidence', done: true }, { label: 'Request independent review', done: true }], version: { increment: 1 } } }); await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }) }) }
+  review(a: AuthContext, id: string, b: ReviewDto, m: CommandMeta) { requirePermission(a, 'finding:work'); return this.execute(a, id, 'request-review', b, m, async () => {}) }
   verify(a: AuthContext, id: string, b: VerifyDto, m: CommandMeta) { requirePermission(a, 'finding:verify'); return this.execute(a, id, 'verify', b, m, async (tx, f, next) => { await tx.verification.create({ data: { tenantId: a.tenantId, findingId: f.id, verifierUserId: a.userId, method: b.method, result: b.result, notes: b.notes } }); await tx.finding.update({ where: { id: f.id }, data: { state: b.result === 'PASSED' ? next : 'IN_PROGRESS', version: { increment: 1 } } }); await tx.remediationTask.update({ where: { findingId: f.id }, data: { state: b.result === 'PASSED' ? 'DONE' : 'IN_PROGRESS', version: { increment: 1 } } }) }) }
   resolve(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:resolve'); return this.execute(a, id, 'resolve', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, resolvedAt: new Date(), version: { increment: 1 } } }) }) }
   acceptRisk(a: AuthContext, id: string, b: AcceptRiskDto, m: CommandMeta) { requirePermission(a, 'finding:accept-risk'); return this.execute(a, id, 'accept-risk', b, m, async (tx, f, next) => { await tx.riskAcceptance.upsert({ where: { findingId: id }, create: { tenantId: a.tenantId, findingId: id, approvedByUserId: a.userId, reason: b.reason, businessOwner: b.businessOwner, compensatingControl: b.compensatingControl, expiresAt: new Date(b.expiresAt) }, update: { reason: b.reason, businessOwner: b.businessOwner, compensatingControl: b.compensatingControl, expiresAt: new Date(b.expiresAt) } }); await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }) }) }
