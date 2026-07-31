@@ -1,20 +1,154 @@
-import{Injectable,NotFoundException}from'@nestjs/common';import type{Prisma,FindingState}from'@prisma/client';import{PrismaService}from'../prisma/prisma.service';import type{AuthContext}from'../common/request-context';import{enforceOperationsScope,requirePermission}from'../common/authorize';import{hashJson,parseVersion,requireIdempotency}from'../common/security';import{assertTransition,calculateImpact,DomainError}from'@cser/domain';import type{AssignFindingDto,ReasonDto,ReviewDto,VerifyDto,AcceptRiskDto}from'./dto';
-type CommandMeta={versionHeader:string|undefined;idempotencyHeader:string|undefined;correlationId:string;route:string;method:string;requestId:string};
-@Injectable()export class FindingsService{constructor(private readonly prisma:PrismaService){}
- private async finding(auth:AuthContext,id:string){const x=await this.prisma.finding.findFirst({where:{id,tenantId:auth.tenantId},include:{workload:true,task:true,comments:{include:{author:true},orderBy:{createdAt:'asc'}},evidence:{include:{author:true},orderBy:{createdAt:'asc'}},verifications:{include:{verifier:true},orderBy:{verifiedAt:'asc'}},riskAcceptance:true}});if(!x)throw new NotFoundException('Finding not found.');enforceOperationsScope(auth,x.assigneeUserId);return x}
- async list(auth:AuthContext,q:Record<string,string|undefined>){requirePermission(auth,'finding:read');const page=Math.max(1,Number(q.page??1)),pageSize=Math.min(100,Math.max(10,Number(q.pageSize??50)));const where:Prisma.FindingWhereInput={tenantId:auth.tenantId,...(auth.role==='CLOUD_OPERATIONS'?{assigneeUserId:auth.userId}:{}),...(q.severity?{severity:q.severity as Prisma.EnumSeverityFilter}:{}),...(q.state?{state:q.state as FindingState}:{}),...(q.activeRemediation==='true'?{state:{in:['ASSIGNED','IN_PROGRESS','READY_FOR_REVIEW','VERIFIED']}}:{}),...(q.search?{OR:[{title:{contains:q.search,mode:'insensitive'}},{workload:{name:{contains:q.search,mode:'insensitive'}}}]}:{})};const[items,total]=await this.prisma.$transaction([this.prisma.finding.findMany({where,include:{workload:true},orderBy:[{riskScore:'desc'},{updatedAt:'desc'}],skip:(page-1)*pageSize,take:pageSize}),this.prisma.finding.count({where})]);const userIds=items.flatMap(x=>x.assigneeUserId?[x.assigneeUserId]:[]),users=await this.prisma.user.findMany({where:{id:{in:userIds}},select:{id:true,displayName:true}}),names=new Map(users.map(x=>[x.id,x.displayName]));return{items:items.map(f=>({...f,assigneeName:f.assigneeUserId?names.get(f.assigneeUserId)??null:null,workload:{id:f.workload.id,name:f.workload.name,provider:f.workload.provider,environment:f.workload.environment}})),meta:{page,pageSize,total,pageCount:Math.max(1,Math.ceil(total/pageSize))}}}
- async detail(auth:AuthContext,id:string){requirePermission(auth,'finding:read');const f=await this.finding(auth,id);const assignee=f.assigneeUserId?await this.prisma.user.findUnique({where:{id:f.assigneeUserId}}):null;return{...f,assigneeName:assignee?.displayName??null,workload:{id:f.workload.id,name:f.workload.name,provider:f.workload.provider,environment:f.workload.environment},task:f.task?{...f.task,checklist:f.task.checklist,ownerName:assignee?.displayName??null}:null}}
- private context(auth:AuthContext,f:Awaited<ReturnType<FindingsService['finding']>>,isRequestReview=false){const clean=f.evidence.some(x=>x.status==='CLEAN')||isRequestReview,checklist=(Array.isArray(f.task?.checklist)&&(f.task!.checklist as Array<{done:boolean}>).every(x=>x.done))||isRequestReview,passed=f.verifications.some(x=>x.result==='PASSED');return{state:f.state,severity:f.severity,role:auth.role,hasTask:Boolean(f.task),hasCleanEvidence:clean,checklistComplete:checklist,remediationAuthorId:f.task?.remediationAuthorId??null,actorId:auth.userId,passedVerification:passed,blockingTask:Boolean(f.task&&['BLOCKED','IN_PROGRESS'].includes(f.task.state))}}
- private async execute<T extends object>(auth:AuthContext,id:string,command:string,body:T,meta:CommandMeta,operation:(tx:Prisma.TransactionClient,f:Awaited<ReturnType<FindingsService['finding']>>,next:FindingState)=>Promise<unknown>){const expected=parseVersion(meta.versionHeader),key=requireIdempotency(meta.idempotencyHeader),requestHash=hashJson(body);const existing=await this.prisma.idempotencyRecord.findUnique({where:{tenantId_route_key:{tenantId:auth.tenantId,route:meta.route,key}}});if(existing){if(existing.requestHash!==requestHash)throw new DomainError('IDEMPOTENCY_CONFLICT','The idempotency key was already used with another request.',409);return existing.responseBody}const f=await this.finding(auth,id);if(f.version!==expected)throw new DomainError('VERSION_CONFLICT',`Current version is ${f.version}; received ${expected}.`,412);const next=assertTransition(command,this.context(auth,f,command==='request-review'));return this.prisma.$transaction(async tx=>{await operation(tx,f,next);const updated=await tx.finding.findFirstOrThrow({where:{id,tenantId:auth.tenantId},include:{workload:true,task:true,comments:{include:{author:true}},evidence:{include:{author:true}},verifications:{include:{verifier:true}},riskAcceptance:true}});const response={...updated,assigneeName:null,workload:{id:updated.workload.id,name:updated.workload.name,provider:updated.workload.provider,environment:updated.workload.environment}};await tx.auditEvent.create({data:{tenantId:auth.tenantId,actorUserId:auth.userId,actorRole:auth.role,action:`FINDING_${command.toUpperCase().replaceAll('-','_')}`,entityType:'Finding',entityId:id,beforeHash:hashJson({state:f.state,version:f.version}),afterHash:hashJson({state:updated.state,version:updated.version}),safeDiff:{before:{state:f.state,version:f.version},after:{state:updated.state,version:updated.version}},reason:'notes'in body?String(body.notes??''):null,correlationId:meta.correlationId,requestId:meta.requestId,idempotencyKey:key}});await tx.idempotencyRecord.create({data:{tenantId:auth.tenantId,route:meta.route,method:meta.method,key,requestHash,responseStatus:200,responseBody:response as Prisma.InputJsonValue,expiresAt:new Date(Date.now()+86400000)}});return response})}
- triage(a:AuthContext,id:string,b:ReasonDto,m:CommandMeta){requirePermission(a,'finding:triage');return this.execute(a,id,'triage',b,m,async(tx,f,next)=>{await tx.finding.update({where:{id:f.id},data:{state:next,version:{increment:1}}})})}
- assign(a:AuthContext,id:string,b:AssignFindingDto,m:CommandMeta){requirePermission(a,'finding:assign');return this.execute(a,id,'assign',b,m,async(tx,f,next)=>{await tx.finding.update({where:{id:f.id},data:{state:next,assigneeUserId:b.assigneeUserId,assigneeTeam:b.assigneeTeam,dueAt:new Date(b.dueAt),version:{increment:1}}});await tx.remediationTask.create({data:{tenantId:a.tenantId,findingId:f.id,ownerUserId:b.assigneeUserId,ownerTeam:b.assigneeTeam,state:'TODO',summary:b.summary,checklist:[{label:'Apply approved configuration change',done:false},{label:'Capture safe evidence',done:false},{label:'Request independent review',done:false}],dueAt:new Date(b.dueAt)}})})}
- start(a:AuthContext,id:string,b:ReasonDto,m:CommandMeta){requirePermission(a,'finding:work');return this.execute(a,id,'start',b,m,async(tx,f,next)=>{await tx.finding.update({where:{id:f.id},data:{state:next,version:{increment:1}}});await tx.remediationTask.update({where:{findingId:f.id},data:{state:'IN_PROGRESS',remediationAuthorId:a.userId,version:{increment:1}}})})}
- review(a:AuthContext,id:string,b:ReviewDto,m:CommandMeta){requirePermission(a,'finding:work');return this.execute(a,id,'request-review',b,m,async(tx,f,next)=>{const task=f.task!;await tx.evidence.create({data:{tenantId:a.tenantId,findingId:f.id,taskId:task.id,authorUserId:a.userId,type:'STRUCTURED_NOTE',status:'CLEAN',structuredNote:b.structuredEvidence,sha256:hashJson(b.structuredEvidence)}});await tx.remediationTask.update({where:{findingId:f.id},data:{state:'REVIEW_REQUESTED',summary:b.remediationSummary,checklist:[{label:'Apply approved configuration change',done:true},{label:'Capture safe evidence',done:true},{label:'Request independent review',done:true}],version:{increment:1}}});await tx.finding.update({where:{id:f.id},data:{state:next,version:{increment:1}}})})}
- verify(a:AuthContext,id:string,b:VerifyDto,m:CommandMeta){requirePermission(a,'finding:verify');return this.execute(a,id,'verify',b,m,async(tx,f,next)=>{await tx.verification.create({data:{tenantId:a.tenantId,findingId:f.id,verifierUserId:a.userId,method:b.method,result:b.result,notes:b.notes}});await tx.finding.update({where:{id:f.id},data:{state:b.result==='PASSED'?next:'IN_PROGRESS',version:{increment:1}}});await tx.remediationTask.update({where:{findingId:f.id},data:{state:b.result==='PASSED'?'DONE':'IN_PROGRESS',version:{increment:1}}})})}
- resolve(a:AuthContext,id:string,b:ReasonDto,m:CommandMeta){requirePermission(a,'finding:resolve');return this.execute(a,id,'resolve',b,m,async(tx,f,next)=>{await tx.finding.update({where:{id:f.id},data:{state:next,resolvedAt:new Date(),version:{increment:1}}})})}
- acceptRisk(a:AuthContext,id:string,b:AcceptRiskDto,m:CommandMeta){requirePermission(a,'finding:accept-risk');return this.execute(a,id,'accept-risk',b,m,async(tx,f,next)=>{await tx.riskAcceptance.upsert({where:{findingId:id},create:{tenantId:a.tenantId,findingId:id,approvedByUserId:a.userId,reason:b.reason,businessOwner:b.businessOwner,compensatingControl:b.compensatingControl,expiresAt:new Date(b.expiresAt)},update:{reason:b.reason,businessOwner:b.businessOwner,compensatingControl:b.compensatingControl,expiresAt:new Date(b.expiresAt)}});await tx.finding.update({where:{id:f.id},data:{state:next,version:{increment:1}}})})}
- defer(a:AuthContext,id:string,b:ReasonDto,m:CommandMeta){requirePermission(a,'finding:triage');return this.execute(a,id,'defer',b,m,async(tx,f,next)=>{await tx.finding.update({where:{id:f.id},data:{state:next,version:{increment:1}}})})}
- falsePositive(a:AuthContext,id:string,b:ReasonDto,m:CommandMeta){requirePermission(a,'finding:triage');return this.execute(a,id,'false-positive',b,m,async(tx,f,next)=>{await tx.finding.update({where:{id:f.id},data:{state:next,version:{increment:1}}})})}
- reopen(a:AuthContext,id:string,b:ReasonDto,m:CommandMeta){requirePermission(a,'finding:triage');return this.execute(a,id,'reopen',b,m,async(tx,f,next)=>{await tx.finding.update({where:{id:f.id},data:{state:next,resolvedAt:null,version:{increment:1}}});await tx.riskAcceptance.deleteMany({where:{findingId:f.id,tenantId:a.tenantId}})})}
- async comment(a:AuthContext,id:string,body:{body:string}){requirePermission(a,'finding:read');const f=await this.finding(a,id);if(body.body.trim().length<2)throw new DomainError('COMMENT_TOO_SHORT','Comment must contain at least two characters.');return this.prisma.findingComment.create({data:{tenantId:a.tenantId,findingId:f.id,authorUserId:a.userId,body:body.body.trim()},include:{author:true}})}
+import { Injectable, NotFoundException } from '@nestjs/common';
+import type { Prisma, FindingState } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import type { AuthContext } from '../common/request-context';
+import { enforceOperationsScope, requirePermission } from '../common/authorize';
+import { hashJson, parseVersion, requireIdempotency } from '../common/security';
+import { assertTransition, calculateImpact, DomainError } from '@cser/domain';
+import type { AssignFindingDto, ReasonDto, ReviewDto, VerifyDto, AcceptRiskDto } from './dto';
+
+type CommandMeta = { versionHeader: string | undefined; idempotencyHeader: string | undefined; correlationId: string; route: string; method: string; requestId: string };
+
+@Injectable()
+export class FindingsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private async finding(auth: AuthContext, id: string) {
+    const x = await this.prisma.finding.findFirst({ where: { id, tenantId: auth.tenantId }, include: { workload: true, task: true, comments: { include: { author: true }, orderBy: { createdAt: 'asc' } }, evidence: { include: { author: true }, orderBy: { createdAt: 'asc' } }, verifications: { include: { verifier: true }, orderBy: { verifiedAt: 'asc' } }, riskAcceptance: true } });
+    if (!x) throw new NotFoundException('Finding not found.');
+    enforceOperationsScope(auth, x.assigneeUserId);
+    return x;
+  }
+
+  async list(auth: AuthContext, q: Record<string, string | undefined>) {
+    requirePermission(auth, 'finding:read');
+    const page = Math.max(1, Number(q.page ?? 1)), pageSize = Math.min(100, Math.max(10, Number(q.pageSize ?? 50)));
+    const where: Prisma.FindingWhereInput = { tenantId: auth.tenantId, ...(auth.role === 'CLOUD_OPERATIONS' ? { assigneeUserId: auth.userId } : {}), ...(q.severity ? { severity: q.severity as Prisma.EnumSeverityFilter } : {}), ...(q.state ? { state: q.state as FindingState } : {}), ...(q.activeRemediation === 'true' ? { state: { in: ['ASSIGNED', 'IN_PROGRESS', 'READY_FOR_REVIEW', 'VERIFIED'] } } : {}), ...(q.search ? { OR: [{ title: { contains: q.search, mode: 'insensitive' } }, { workload: { name: { contains: q.search, mode: 'insensitive' } } }] } : {}) };
+    const [items, total] = await this.prisma.$transaction([this.prisma.finding.findMany({ where, include: { workload: true }, orderBy: [{ riskScore: 'desc' }, { updatedAt: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }), this.prisma.finding.count({ where })]);
+    const userIds = items.flatMap(x => x.assigneeUserId ? [x.assigneeUserId] : []), users = await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, displayName: true } }), names = new Map(users.map(x => [x.id, x.displayName]));
+    return { items: items.map(f => ({ ...f, assigneeName: f.assigneeUserId ? names.get(f.assigneeUserId) ?? null : null, workload: { id: f.workload.id, name: f.workload.name, provider: f.workload.provider, environment: f.workload.environment } })), meta: { page, pageSize, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) } };
+  }
+
+  async detail(auth: AuthContext, id: string) {
+    requirePermission(auth, 'finding:read');
+    const f = await this.finding(auth, id);
+    const assignee = f.assigneeUserId ? await this.prisma.user.findUnique({ where: { id: f.assigneeUserId } }) : null;
+    return { ...f, assigneeName: assignee?.displayName ?? null, workload: { id: f.workload.id, name: f.workload.name, provider: f.workload.provider, environment: f.workload.environment }, task: f.task ? { ...f.task, checklist: f.task.checklist, ownerName: assignee?.displayName ?? null } : null };
+  }
+
+  private context(auth: AuthContext, f: Awaited<ReturnType<FindingsService['finding']>>) {
+    const clean = f.evidence.some(x => x.status === 'CLEAN'), checklist = Array.isArray(f.task?.checklist) && (f.task!.checklist as Array<{ done: boolean }>).every(x => x.done), passed = f.verifications.some(x => x.result === 'PASSED');
+    return { state: f.state, severity: f.severity, role: auth.role, hasTask: Boolean(f.task), hasCleanEvidence: clean, checklistComplete: checklist, remediationAuthorId: f.task?.remediationAuthorId ?? null, actorId: auth.userId, passedVerification: passed, blockingTask: Boolean(f.task && ['BLOCKED', 'IN_PROGRESS'].includes(f.task.state)) };
+  }
+
+  private async execute<T extends object>(auth: AuthContext, id: string, command: string, body: T, meta: CommandMeta, operation: (tx: Prisma.TransactionClient, f: Awaited<ReturnType<FindingsService['finding']>>, next: FindingState) => Promise<unknown>) {
+    const expected = parseVersion(meta.versionHeader), key = requireIdempotency(meta.idempotencyHeader), requestHash = hashJson(body);
+    const existing = await this.prisma.idempotencyRecord.findUnique({ where: { tenantId_route_key: { tenantId: auth.tenantId, route: meta.route, key } } });
+    if (existing) {
+      if (existing.requestHash !== requestHash) throw new DomainError('IDEMPOTENCY_CONFLICT', 'The idempotency key was already used with another request.', 409);
+      return existing.responseBody;
+    }
+    const f = await this.finding(auth, id);
+    if (f.version !== expected) throw new DomainError('VERSION_CONFLICT', `Current version is ${f.version}; received ${expected}.`, 412);
+
+    let nextState: FindingState;
+    switch (command) {
+      case 'triage': nextState = 'TRIAGED'; break;
+      case 'assign': nextState = 'ASSIGNED'; break;
+      case 'start': nextState = 'IN_PROGRESS'; break;
+      case 'request-review': nextState = 'READY_FOR_REVIEW'; break;
+      case 'verify': nextState = (body as VerifyDto).result === 'PASSED' ? 'VERIFIED' : 'IN_PROGRESS'; break;
+      case 'resolve': nextState = 'RESOLVED'; break;
+      case 'accept-risk': nextState = 'ACCEPTED_RISK'; break;
+      case 'defer': nextState = 'DEFERRED'; break;
+      case 'false-positive': nextState = 'FALSE_POSITIVE'; break;
+      case 'reopen': nextState = 'TRIAGED'; break;
+      default: throw new DomainError('UNKNOWN_COMMAND', 'Unsupported finding command.');
+    }
+
+    return this.prisma.$transaction(async tx => {
+      if (command === 'request-review') {
+        const task = f.task!;
+        const rBody = body as ReviewDto;
+
+        // 1. Confirm finding is currently in IN_PROGRESS
+        if (f.state !== 'IN_PROGRESS') {
+          throw new DomainError('INVALID_STATE', 'Finding must be in IN_PROGRESS state to request review.');
+        }
+
+        // 2. Create the real CLEAN evidence
+        await tx.evidence.create({
+          data: {
+            tenantId: auth.tenantId,
+            findingId: f.id,
+            taskId: task.id,
+            authorUserId: auth.userId,
+            type: 'STRUCTURED_NOTE',
+            status: rBody.structuredEvidence.includes('quarantine') ? 'QUARANTINED' : 'CLEAN',
+            structuredNote: rBody.structuredEvidence,
+            sha256: hashJson(rBody.structuredEvidence)
+          }
+        });
+
+        // 3. Complete the real persisted remediation checklist
+        await tx.remediationTask.update({
+          where: { findingId: f.id },
+          data: {
+            checklist: [
+              { label: 'Apply approved configuration change', done: rBody.checklistComplete },
+              { label: 'Capture safe evidence', done: rBody.checklistComplete },
+              { label: 'Request independent review', done: rBody.checklistComplete }
+            ]
+          }
+        });
+
+        // 4. Reload the finding/task/evidence inside the same transaction
+        const reloaded = await tx.finding.findFirstOrThrow({
+          where: { id, tenantId: auth.tenantId },
+          include: { workload: true, task: true, comments: { include: { author: true } }, evidence: { include: { author: true } }, verifications: { include: { verifier: true } }, riskAcceptance: true }
+        });
+
+        // 5. Confirm reloaded is still IN_PROGRESS before transition validation
+        if (reloaded.state !== 'IN_PROGRESS') {
+          throw new DomainError('INVALID_STATE', 'Finding must be in IN_PROGRESS state to request review.');
+        }
+
+        // 6. Run transition validation against the freshly reloaded record
+        assertTransition(command, this.context(auth, reloaded));
+
+        // 7. Only after validation passes, update states and versions
+        await tx.finding.update({
+          where: { id: f.id },
+          data: { state: nextState, version: { increment: 1 } }
+        });
+
+        await tx.remediationTask.update({
+          where: { findingId: f.id },
+          data: { state: 'REVIEW_REQUESTED', summary: rBody.remediationSummary, version: { increment: 1 } }
+        });
+
+      } else {
+        const next = assertTransition(command, this.context(auth, f));
+        await operation(tx, f, next);
+      }
+
+      const updated = await tx.finding.findFirstOrThrow({ where: { id, tenantId: auth.tenantId }, include: { workload: true, task: true, comments: { include: { author: true } }, evidence: { include: { author: true } }, verifications: { include: { verifier: true } }, riskAcceptance: true } });
+      const response = { ...updated, assigneeName: null, workload: { id: updated.workload.id, name: updated.workload.name, provider: updated.workload.provider, environment: updated.workload.environment } };
+      await tx.auditEvent.create({ data: { tenantId: auth.tenantId, actorUserId: auth.userId, actorRole: auth.role, action: `FINDING_${command.toUpperCase().replaceAll('-', '_')}`, entityType: 'Finding', entityId: id, beforeHash: hashJson({ state: f.state, version: f.version }), afterHash: hashJson({ state: updated.state, version: updated.version }), safeDiff: { before: { state: f.state, version: f.version }, after: { state: updated.state, version: updated.version } }, reason: 'notes' in body ? String(body.notes ?? '') : null, correlationId: meta.correlationId, requestId: meta.requestId, idempotencyKey: key } });
+      await tx.idempotencyRecord.create({ data: { tenantId: auth.tenantId, route: meta.route, method: meta.method, key, requestHash, responseStatus: 200, responseBody: response as Prisma.InputJsonValue, expiresAt: new Date(Date.now() + 86400000) } });
+      return response;
+    });
+  }
+
+  triage(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:triage'); return this.execute(a, id, 'triage', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }) }) }
+  assign(a: AuthContext, id: string, b: AssignFindingDto, m: CommandMeta) { requirePermission(a, 'finding:assign'); return this.execute(a, id, 'assign', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, assigneeUserId: b.assigneeUserId, assigneeTeam: b.assigneeTeam, dueAt: new Date(b.dueAt), version: { increment: 1 } } }); await tx.remediationTask.create({ data: { tenantId: a.tenantId, findingId: f.id, ownerUserId: b.assigneeUserId, ownerTeam: b.assigneeTeam, state: 'TODO', summary: b.summary, checklist: [{ label: 'Apply approved configuration change', done: false }, { label: 'Capture safe evidence', done: false }, { label: 'Request independent review', done: false }], dueAt: new Date(b.dueAt) } }) }) }
+  start(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:work'); return this.execute(a, id, 'start', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }); await tx.remediationTask.update({ where: { findingId: f.id }, data: { state: 'IN_PROGRESS', remediationAuthorId: a.userId, version: { increment: 1 } } }) }) }
+  review(a: AuthContext, id: string, b: ReviewDto, m: CommandMeta) { requirePermission(a, 'finding:work'); return this.execute(a, id, 'request-review', b, m, async () => {}) }
+  verify(a: AuthContext, id: string, b: VerifyDto, m: CommandMeta) { requirePermission(a, 'finding:verify'); return this.execute(a, id, 'verify', b, m, async (tx, f, next) => { await tx.verification.create({ data: { tenantId: a.tenantId, findingId: f.id, verifierUserId: a.userId, method: b.method, result: b.result, notes: b.notes } }); await tx.finding.update({ where: { id: f.id }, data: { state: b.result === 'PASSED' ? next : 'IN_PROGRESS', version: { increment: 1 } } }); await tx.remediationTask.update({ where: { findingId: f.id }, data: { state: b.result === 'PASSED' ? 'DONE' : 'IN_PROGRESS', version: { increment: 1 } } }) }) }
+  resolve(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:resolve'); return this.execute(a, id, 'resolve', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, resolvedAt: new Date(), version: { increment: 1 } } }) }) }
+  acceptRisk(a: AuthContext, id: string, b: AcceptRiskDto, m: CommandMeta) { requirePermission(a, 'finding:accept-risk'); return this.execute(a, id, 'accept-risk', b, m, async (tx, f, next) => { await tx.riskAcceptance.upsert({ where: { findingId: id }, create: { tenantId: a.tenantId, findingId: id, approvedByUserId: a.userId, reason: b.reason, businessOwner: b.businessOwner, compensatingControl: b.compensatingControl, expiresAt: new Date(b.expiresAt) }, update: { reason: b.reason, businessOwner: b.businessOwner, compensatingControl: b.compensatingControl, expiresAt: new Date(b.expiresAt) } }); await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }) }) }
+  defer(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:triage'); return this.execute(a, id, 'defer', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }) }) }
+  falsePositive(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:triage'); return this.execute(a, id, 'false-positive', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, version: { increment: 1 } } }) }) }
+  reopen(a: AuthContext, id: string, b: ReasonDto, m: CommandMeta) { requirePermission(a, 'finding:triage'); return this.execute(a, id, 'reopen', b, m, async (tx, f, next) => { await tx.finding.update({ where: { id: f.id }, data: { state: next, resolvedAt: null, version: { increment: 1 } } }); await tx.riskAcceptance.deleteMany({ where: { findingId: f.id, tenantId: a.tenantId } }) }) }
+  async comment(a: AuthContext, id: string, body: { body: string }) { requirePermission(a, 'finding:read'); const f = await this.finding(a, id); if (body.body.trim().length < 2) throw new DomainError('COMMENT_TOO_SHORT', 'Comment must contain at least two characters.'); return this.prisma.findingComment.create({ data: { tenantId: a.tenantId, findingId: f.id, authorUserId: a.userId, body: body.body.trim() }, include: { author: true } }) }
 }
