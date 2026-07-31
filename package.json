@@ -35,9 +35,9 @@
     "tsx": "4.20.3",
     "typescript": "5.9.2",
     "@prisma/client": "7.9.0",
-    "@prisma/adapter-pg": "latest",
-    "pg": "latest",
-    "@types/pg": "latest"
+    "@prisma/adapter-pg": "7.9.0",
+    "pg": "8.22.0",
+    "@types/pg": "8.20.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
