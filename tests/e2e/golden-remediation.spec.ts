@@ -34,7 +34,16 @@ test('golden remediation flow preserves server-enforced commands', async ({ brow
   await a.getByRole('button', { name: 'Confirm command' }).click();
   await expect(aMeta.getByText('Assigned', { exact: true })).toBeVisible();
 
-  // 4. Verification: Log in as Lukas Novak (Ops) and verify assigned state and assignee name
+  // 4. Direct API assertion confirming assignment preconditions
+  const response = await a.request.get(`/api/v1/findings/${findingId}`);
+  expect(response.ok()).toBe(true);
+  const data = await response.json();
+  expect(data.state).toBe('ASSIGNED');
+  expect(data.assigneeUserId).toBe('usr-lukas');
+  expect(data.task).not.toBeNull();
+  expect(data.task.ownerUserId).toBe('usr-lukas');
+
+  // 5. Verification: Log in as Lukas Novak (Ops) and verify assigned state and assignee name
   await loginAs(o, 'Lukas Novak');
   await o.goto(`/app/findings/${findingId}`);
 
@@ -44,26 +53,26 @@ test('golden remediation flow preserves server-enforced commands', async ({ brow
   // Scope assignee owner assertion strictly to the "Owner" definition label
   await expect(o.locator('.definition', { hasText: 'Owner' }).getByText('Lukas Novak')).toBeVisible();
 
-  // 5. Transition: ASSIGNED -> IN_PROGRESS
-  await o.getByRole('button', { name: /Start remediation/i }).click();
+  // 6. Transition: ASSIGNED -> IN_PROGRESS
+  await o.getByRole('button', { name: /Start-remediation/i }).click();
   await o.getByRole('button', { name: 'Confirm command' }).click();
   await expect(oMeta.getByText('In progress', { exact: true })).toBeVisible();
 
-  // 6. Transition: IN_PROGRESS -> READY_FOR_REVIEW
-  await o.getByRole('button', { name: /Request review/i }).click();
+  // 7. Transition: IN_PROGRESS -> READY_FOR_REVIEW
+  await o.getByRole('button', { name: /Request-review/i }).click();
   await o.getByRole('button', { name: 'Confirm command' }).click();
   await expect(oMeta.getByText('Ready for review', { exact: true })).toBeVisible();
 
-  // 7. Verification: Analyst reloads and sees Ready for review
+  // 8. Verification: Analyst reloads and sees Ready for review
   await a.reload();
   await expect(aMeta.getByText('Ready for review', { exact: true })).toBeVisible();
 
-  // 8. Transition: READY_FOR_REVIEW -> VERIFIED (via Verify command)
+  // 9. Transition: READY_FOR_REVIEW -> VERIFIED (via Verify command)
   await a.getByRole('button', { name: 'Verify' }).click();
   await a.getByRole('button', { name: 'Confirm command' }).click();
   await expect(aMeta.getByText('Verified', { exact: true })).toBeVisible();
 
-  // 9. Transition: VERIFIED -> RESOLVED (via Resolve command)
+  // 10. Transition: VERIFIED -> RESOLVED (via Resolve command)
   await a.getByRole('button', { name: 'Resolve' }).click();
   await a.getByRole('button', { name: 'Confirm command' }).click();
   await expect(aMeta.getByText('Resolved', { exact: true })).toBeVisible();
