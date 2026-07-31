@@ -1,0 +1,16 @@
+modules = ["web", "postgresql-16", "nodejs-22"]
+
+[nix]
+channel = "stable-25_05"
+
+[agent]
+expertMode = true
+
+[userenv]
+
+[userenv.shared]
+ALLOWED_ORIGINS = "http://localhost:5000,http://localhost:5173"
+COREPACK_ENABLE_STRICT = "0"
+NODE_ENV = "development"
+PNPM_PATH = "/nix/store/61lr9izijvg30pcribjdxgjxvh3bysp4-pnpm-10.26.1/bin/pnpm"
+PORT = "4000"

@@ -5,6 +5,7 @@ services:
       POSTGRES_DB: cser
       POSTGRES_USER: cser
       POSTGRES_PASSWORD: cser_local_only
+    ports: ["5432:5432"]
     volumes: [cser_pg:/var/lib/postgresql/data]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U cser -d cser"], interval: 5s, timeout: 3s, retries: 20}
   api:

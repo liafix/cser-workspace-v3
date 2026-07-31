@@ -2,14 +2,14 @@
   "name": "cser-workspace-v3-eset-candidate-edition",
   "version": "3.0.0",
   "private": true,
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@10.26.1",
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
     "dev": "pnpm build:packages && pnpm --parallel --filter @cser/web --filter @cser/api dev",
     "build": "pnpm build:packages && pnpm --filter @cser/api build && pnpm --filter @cser/web build",
-    "lint": "pnpm -r lint",
+    "lint": "pnpm build:packages && pnpm -r lint",
     "typecheck": "pnpm build:packages && pnpm --filter @cser/api typecheck && pnpm --filter @cser/web typecheck",
     "test": "pnpm --filter @cser/domain test && pnpm --filter @cser/web test && pnpm --filter @cser/api test",
     "test:integration": "pnpm --filter @cser/api test:integration",
@@ -33,6 +33,20 @@
     "@types/node": "24.1.0",
     "prisma": "7.9.0",
     "tsx": "4.20.3",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "@prisma/client": "7.9.0",
+    "@prisma/adapter-pg": "7.9.0",
+    "pg": "8.22.0",
+    "@types/pg": "8.20.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/engines",
+      "@scarf/scarf",
+      "esbuild",
+      "prisma",
+      "@prisma/client"
+    ]
   }
 }
