@@ -18,7 +18,19 @@ export function assertTransition(command:string,ctx:FindingContext):FindingState
  }
 }
 export function calculateRisk(input:{severity:Severity;confidence:'HIGH'|'MEDIUM'|'LOW';production:boolean;internetExposed:boolean;unprotected:boolean;criticalAsset:boolean;overdue:boolean;compensatingControl:boolean}){
- const severity={CRITICAL:45,HIGH:32,MEDIUM:18,LOW:8}[input.severity],confidence={HIGH:12,MEDIUM:6,LOW:2}[input.confidence];
+ const severityMap: Record<Severity, number> = {
+  CRITICAL: 45,
+  HIGH: 32,
+  MEDIUM: 18,
+  LOW: 8
+ };
+ const confidenceMap: Record<'HIGH' | 'MEDIUM' | 'LOW', number> = {
+  HIGH: 12,
+  MEDIUM: 6,
+  LOW: 2
+ };
+ const severity = severityMap[input.severity];
+ const confidence = confidenceMap[input.confidence];
  const explanation=[{label:`${input.severity} severity`,points:severity},{label:`${input.confidence} confidence`,points:confidence},{label:'Production exposure',points:input.production?10:0},{label:'Internet exposure',points:input.internetExposed?12:0},{label:'Unprotected workload',points:input.unprotected?10:0},{label:'Critical asset',points:input.criticalAsset?8:0},{label:'Overdue SLA',points:input.overdue?8:0},{label:'Compensating control',points:input.compensatingControl?-10:0}].filter(x=>x.points!==0);
  return{score:Math.max(0,Math.min(100,explanation.reduce((s,x)=>s+x.points,0))),explanation}
 }
